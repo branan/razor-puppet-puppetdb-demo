@@ -1,7 +1,7 @@
 # -*- mode: ruby -*-
 # vi: set ft=ruby :
 
-env = "razor,puppet,puppetdb"
+env = "razor,puppetdb,enterprise"
 Vagrant::Config.run do |config|
 
   config.vm.define :master do |box_config|
@@ -12,12 +12,14 @@ Vagrant::Config.run do |config|
     box_config.vm.customize ["modifyvm", :id, "--name", 'master.puppetlabs.vm']
     box_config.vm.network :hostonly, '172.16.0.2', :adapter => 2
     box_config.vm.boot_mode = 'gui'
+    box_config.vm.provision :shell, :path => 'install_pe.sh'
     box_config.vm.provision :puppet do | puppet|
 	    puppet.manifest_file = 'provision.pp'
 	    puppet.manifests_path = '../../manifests'
 	    puppet.module_path = '../../modules'
       puppet.options = "--tags #{env}"
     end
+    box_config.vm.provision :shell, :path => 'use_puppetdb.sh'
   end
 
   config.vm.define :agent1 do |box_config|

@@ -1,11 +1,11 @@
-node master {
+node /master/ {
   $hostname = 'master.puppetlabs.vm'
   $hostaddr = '172.16.0.1'
   $ipaddr   = '172.16.0.2'
 
   package { 'vim':
     ensure  => installed,
-    tag     => ['razor','puppet'],
+    tag     => ['razor','puppet','puppetdb'],
   }
 
   #### DHCP
@@ -30,7 +30,7 @@ node master {
   ### Give us sudo
   sudo::conf { 'vagrant':
     content => 'vagrant ALL=(ALL) NOPASSWD: ALL',
-    tag    => ['razor','puppet'],
+    tag    => ['razor','puppet','puppetdb'],
   }
 
   ### Add the puppetlabs repo
@@ -39,7 +39,7 @@ node master {
     repos      => 'main',
     key        => '4BD6EC30',
     key_server => 'pgp.mit.edu',
-    tag       => ['puppet'],
+    tag        => ['puppet','puppetdb'],
   }
 
   Exec["apt_update"] -> Package <| |>
@@ -102,13 +102,14 @@ puppet  IN      A       $ipaddr
 
   ####### puppetdb
   class { 'puppetdb::server':
-    tag => ['puppet'],
+    tag => ['puppetdb'],
   }
 
-  exec { '/etc/init.d/puppetdb stop && /usr/sbin/puppetdb-ssl-setup && /etc/init.d/puppetdb start':
+  exec { 'setup_puppetdb_ssl':
+    command => '/etc/init.d/puppetdb stop && /usr/sbin/puppetdb-ssl-setup && /etc/init.d/puppetdb start',
     creates => '/etc/puppetdb/ssl/keystore.jks',
-    require => [Class['puppetdb::server'],Class['puppet::master']],
-    tag     => ['puppet'],
+    require => Class['puppetdb::server'],
+    tag     => ['puppetdb'],
   }
 
   ###### puppet
@@ -116,11 +117,13 @@ puppet  IN      A       $ipaddr
     autosign                  => true,
     storeconfigs              => true,
     storeconfigs_dbserver     => $hostname,
+    before                    => Exec['setup_puppetdb_ssl'],
     tag                       => ['puppet'],
   }
 
   class { 'puppet::agent':
     puppet_server             => $hostname,
+    require                   => Package['puppetmaster'],
     tag                       => ['puppet'],
   }
 
@@ -139,6 +142,33 @@ puppet  IN      A       $ipaddr
     require => Package['puppetmaster'],
     force   => true,
     tag     => ['puppet'],
+  }
+
+  exec {'/bin/sleep 10':
+    before  => Service['razor'],
+    require => Service['mongodb'],
+    tag     => ['razor']
+  }
+
+  # PE-specific hacks
+  package { 'pe-puppetdb-terminus':
+    ensure => present,
+    before => File["${settings::confdir}/routes.yaml"],
+    tag    => ['enterprise']
+  }
+
+  file {'/etc/puppetlabs/puppet/manifests':
+    ensure  => link,
+    target  => '/tmp/vagrant-puppet/manifests',
+    force   => true,
+    tag     => ['enterprise'],
+  }
+
+  file {'/etc/puppetlabs/puppet/modules':
+    ensure  => link,
+    target  => '/tmp/vagrant-puppet/modules-0',
+    force   => true,
+    tag     => ['enterprise'],
   }
 
   #####HACK TO SETUP IP ADDRESS IN RAZOR
